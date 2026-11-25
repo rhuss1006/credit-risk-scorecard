@@ -1,0 +1,191 @@
+
+==========================================================================
+1. LOAD
+==========================================================================
+records          1000
+characteristics  20
+bad rate         30.00%
+
+dropped as protected / disparate-impact risk: ['personal_status_sex', 'foreign_worker']
+
+==========================================================================
+2. SPLIT
+==========================================================================
+train 700  bad rate 30.00%
+test  300  bad rate 30.00%
+bins and WOE are fit on TRAIN only, then applied to test. Fitting them on all data leaks the target.
+
+==========================================================================
+3-4. COARSE CLASSING AND IV SCREEN
+==========================================================================
+                             iv  bins                    verdict  retained
+checking_status          0.6300     4  suspicious, check leakage      True
+credit_history           0.2520     5                     medium      True
+savings_status           0.2213     5                     medium      True
+duration_months          0.2055     5                     medium      True
+property                 0.1386     4                     medium      True
+employment_since         0.1385     5                     medium      True
+purpose                  0.1260     7                     medium      True
+other_installment_plans  0.1176     3                     medium      True
+housing                  0.1027     3                     medium      True
+credit_amount            0.0537     4                       weak      True
+age_years                0.0470     5                       weak      True
+installment_rate_pct     0.0329     3                       weak      True
+job                      0.0238     4                       weak      True
+telephone                0.0029     2               unpredictive     False
+existing_credits         0.0010     2               unpredictive     False
+residence_since          0.0008     2               unpredictive     False
+other_debtors            0.0005     2               unpredictive     False
+dependents               0.0000     1               unpredictive     False
+
+retained 13 of 18 at IV >= 0.02
+
+==========================================================================
+5-6. WOE TRANSFORM AND CORRELATION SCREEN
+==========================================================================
+test cells hitting an unseen level, set to neutral WOE 0: 0
+  no pair above |r| = 0.7, nothing dropped
+
+==========================================================================
+7-8. MODEL FIT AND COEFFICIENT SIGN REVIEW
+==========================================================================
+  round 1: job has coefficient +0.2765, wrong sign, dropping and refitting
+
+Final model:
+                         coefficient      iv  first_pass_coef  sign_ok
+installment_rate_pct         -1.1948  0.0329          -1.1988     True
+duration_months              -0.8762  0.2055          -0.8830     True
+purpose                      -0.8754  0.1260          -0.8817     True
+savings_status               -0.8313  0.2213          -0.8351     True
+checking_status              -0.7612  0.6300          -0.7619     True
+employment_since             -0.7301  0.1385          -0.7548     True
+other_installment_plans      -0.6922  0.1176          -0.6953     True
+age_years                    -0.6195  0.0470          -0.6108     True
+credit_history               -0.6171  0.2520          -0.6203     True
+housing                      -0.4509  0.1027          -0.4603     True
+property                     -0.3939  0.1386          -0.4070     True
+credit_amount                -0.1951  0.0537          -0.2073     True
+
+intercept -0.8466
+characteristics in final scorecard: 12
+sign review: all coefficients negative as expected
+
+==========================================================================
+9. PERFORMANCE
+==========================================================================
+       train    test
+AUC   0.8155  0.7881
+Gini  0.6309  0.5762
+KS    0.5082  0.4794
+
+Gini = 2*AUC - 1. KS is the max gap between the cumulative good and bad distributions.
+
+==========================================================================
+10. SCORE SCALING
+==========================================================================
+base score 600 at odds 50:1, PDO 20
+factor 28.85   offset 487.12
+train scores 426 to 626, mean 521
+test  scores 427 to 626, mean 520
+
+points table written, 53 attribute rows
+additivity check: summed attribute points 575.8 vs scaled score 575.8
+
+Gains table, band 1 = worst scores:
+      accounts  bads  min_score  max_score  bad_rate    lift  cum_bad_capture  cum_pop
+band                                                                                  
+1           30    22   427.1341   470.2109    0.7333  2.4444           0.2444      0.1
+2           30    19   470.2191   486.4495    0.6333  2.1111           0.4556      0.2
+3           30    11   487.0994   497.7910    0.3667  1.2222           0.5778      0.3
+4           30    11   498.0020   507.7428    0.3667  1.2222           0.7000      0.4
+5           30    11   507.7631   518.2555    0.3667  1.2222           0.8222      0.5
+6           30     3   518.3424   531.1531    0.1000  0.3333           0.8556      0.6
+7           30     5   531.7305   542.8740    0.1667  0.5556           0.9111      0.7
+8           30     3   543.6977   553.5311    0.1000  0.3333           0.9444      0.8
+9           30     5   554.8673   568.2916    0.1667  0.5556           1.0000      0.9
+10          30     0   570.0212   625.6133    0.0000  0.0000           1.0000      1.0
+
+==========================================================================
+11. CUTOFF SELECTION USING THE DATASET COST MATRIX
+==========================================================================
+german.doc: approving a bad costs 5, declining a good costs 1
+ cutoff  approval_rate  bad_rate_of_approved  bads_approved  goods_declined  expected_cost
+  448.9         0.9800                0.2891             85               1          426.0
+  474.3         0.8800                0.2500             66              12          342.0
+  488.8         0.7833                0.1915             45              20          245.0
+  499.3         0.6833                0.1805             37              42          227.0
+  509.7         0.5867                0.1477             26              60          190.0
+  520.1         0.4867                0.1096             16              80          160.0
+  532.1         0.3900                0.1111             13             106          171.0
+  544.2         0.2900                0.0805              7             130          165.0
+  555.0         0.1933                0.0862              5             157          182.0
+  570.3         0.0967                0.0000              0             181          181.0
+
+minimum expected cost at score 517: approve 51.3% of applicants, bad rate of approved book 10.39%
+Cutoff is an economics decision, not a statistics one.
+
+==========================================================================
+12. SIMULATED POPULATION SHIFT AND PSI MONITORING
+==========================================================================
+Scenario: a new acquisition channel brings in more short-tenure, thin-file applicants. The model is unchanged, the population is not.
+
+score PSI, train vs test      0.0222  (stable)
+score PSI, train vs shifted   0.2973  (significant shift, investigate)
+
+Characteristic-level PSI, train vs shifted population:
+                            psi         verdict
+age_years                0.1516  moderate shift
+savings_status           0.1423  moderate shift
+checking_status          0.1019  moderate shift
+housing                  0.0594          stable
+duration_months          0.0543          stable
+installment_rate_pct     0.0494          stable
+credit_amount            0.0421          stable
+employment_since         0.0265          stable
+property                 0.0245          stable
+purpose                  0.0220          stable
+credit_history           0.0174          stable
+other_installment_plans  0.0076          stable
+
+Score PSI tells you THAT the population moved. Characteristic PSI tells you WHICH input moved.
+
+==========================================================================
+13. ADVERSE ACTION REASON CODES
+==========================================================================
+ECOA / Regulation B: a declined applicant must be told the specific
+principal reasons. Because scorecard points are additive, the reason
+codes fall straight out: compare the points the applicant earned on
+each characteristic against the maximum available, and report the
+characteristics with the largest shortfall.
+
+Applicant 1, score 427, declined at cutoff 517
+  principal reasons for adverse action:
+     42.5 pts below best  checking_status = A11
+     29.6 pts below best  savings_status = A61
+     25.6 pts below best  duration_months = (15.0, 30.0]
+     22.8 pts below best  employment_since = A72
+
+Applicant 2, score 429, declined at cutoff 517
+  principal reasons for adverse action:
+     36.2 pts below best  purpose = A46
+     34.9 pts below best  checking_status = A12
+     31.0 pts below best  credit_history = A31
+     29.6 pts below best  savings_status = A61
+
+This is the reason a regulated lender uses an additive scorecard
+instead of a gradient-boosted ensemble.
+
+==========================================================================
+DONE
+==========================================================================
+  adverse_action_reasons.csv
+  coefficients.csv
+  cutoff_analysis.csv
+  diagnostics.png
+  gains_table.csv
+  iv_report.csv
+  performance.csv
+  psi_report.csv
+  run_log.txt
+  scorecard_points.csv
+  woe_patterns.png
